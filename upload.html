@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Memory | Vishu Dev</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background: linear-gradient(45deg, #ff9a9e 0%, #fad0c4 99%); font-family: 'Poppins'; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .hearts-bg { position: fixed; top:0; left:0; width:100%; height:100%; z-index:-1; pointer-events:none; }
+        .card { background: rgba(255,255,255,0.2); backdrop-filter: blur(15px); border-radius: 30px; padding: 40px; width: 90%; max-width: 450px; text-align: center; border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        h2 { font-family: 'Dancing Script'; font-size: 3rem; color: #d63384; margin-bottom: 10px; }
+        .progress-box { width: 100%; background: rgba(255,255,255,0.3); height: 20px; border-radius: 10px; margin: 20px 0; display: none; overflow: hidden; position: relative; }
+        #p-bar { width: 0%; height: 100%; background: #d63384; transition: 0.3s ease; }
+        #p-text { position: absolute; width: 100%; top: 0; left: 0; font-size: 11px; font-weight: 600; color: #fff; line-height: 20px; }
+        input, textarea { width: 100%; padding: 12px; margin-top: 10px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.4); outline: none; font-size: 14px; }
+        .btn { background: #d63384; color: white; border: none; padding: 15px; border-radius: 30px; width: 100%; cursor: pointer; font-weight: 600; margin-top: 20px; transition: 0.3s; }
+        .btn:disabled { background: #a5a5a5; cursor: not-allowed; }
+        #status-msg { color: #d63384; font-weight: 600; margin-top: 10px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="hearts-bg" id="heart-container"></div>
+    <div class="card">
+        <h2>Share Memory</h2>
+        <input type="text" id="u-name" placeholder="Aapka Naam">
+        <input type="file" id="u-file" accept="image/*" onchange="askPerm()">
+        <div class="progress-box" id="p-box"><div id="p-bar"></div><div id="p-text">0%</div></div>
+        <textarea id="u-text" rows="3" placeholder="Kuch pyara sa likhein..."></textarea>
+        <button class="btn" id="up-btn" onclick="realUpload()">Post Now ❤️</button>
+        <p id="status-msg"></p>
+        <a href="index.html" style="display:block; margin-top:15px; color:#d63384; text-decoration:none; font-size:13px;">← Back</a>
+    </div>
+
+    <script>
+        const firebaseConfig = { 
+            apiKey: "AIzaSyCeWI611mJ4QEzaiW7RtexrC_kmDS6MvXk", 
+            authDomain: "vishu-1d431.firebaseapp.com", 
+            databaseURL: "https://vishu-1d431-default-rtdb.firebaseio.com", 
+            projectId: "vishu-1d431", 
+            storageBucket: "vishu-1d431.firebasestorage.app", 
+            messagingSenderId: "6162339551", 
+            appId: "1:6162339551:web:13cc278d3fd15e04287b6a" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('SW Error', err));
+            });
+        }
+
+        async function askPerm() { 
+            try {
+                if ('Notification' in window) {
+                    await Notification.requestPermission();
+                }
+            } catch(e) { console.log("Notif API Error"); }
+        }
+
+        async function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const maxW = 800; 
+                        let w = img.width, h = img.height;
+                        if(w > maxW) { h *= maxW/w; w = maxW; }
+                        canvas.width = w; canvas.height = h;
+                        ctx.drawImage(img, 0, 0, w, h);
+                        resolve(canvas.toDataURL('image/jpeg', 0.6));
+                    };
+                };
+            });
+        }
+
+        async function realUpload() {
+            const file = document.getElementById('u-file').files[0];
+            const name = document.getElementById('u-name').value || "Guest";
+            const text = document.getElementById('u-text').value;
+            const btn = document.getElementById('up-btn');
+            const pBox = document.getElementById('p-box');
+            const pBar = document.getElementById('p-bar');
+            const pText = document.getElementById('p-text');
+
+            if(!file || !text) return alert("Photo aur Shayari dono zaroori hain!");
+
+            btn.disabled = true;
+            pBox.style.display = 'block';
+            pBar.style.width = "30%";
+            pText.innerText = "Processing...";
+
+            try {
+                const base64 = await compressImage(file);
+                pBar.style.width = "70%";
+                pText.innerText = "Uploading...";
+
+                await database.ref('community_posts').push({
+                    name, image: base64, text, timestamp: Date.now()
+                });
+
+                pBar.style.width = "100%";
+                pText.innerText = "Done! ✅";
+
+                // --- UPDATED FORCE NOTIFICATION LOGIC START ---
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.ready.then(function(reg) {
+                        reg.showNotification('Vishu Memories ❤️', {
+                            body: 'Aapki memory live ho gayi hai!',
+                            icon: 'logo.png',
+                            vibrate: [200, 100, 200],
+                            badge: 'logo.png',
+                            tag: 'vishu-notif'
+                        });
+                    }).catch(function(e) {
+                        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                            new Notification('Vishu Memories ❤️', { body: 'Moment Uploaded! ✅' });
+                        }
+                    });
+                } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                    new Notification('Vishu Memories ❤️', { body: 'Moment Uploaded! ✅' });
+                }
+                // --- UPDATED FORCE NOTIFICATION LOGIC END ---
+
+                setTimeout(() => window.location.href = "index.html", 1500);
+
+            } catch(e) {
+                alert("Upload failed!");
+                btn.disabled = false;
+                pBox.style.display = 'none';
+            }
+        }
+
+        function createHeart() {
+            const heart = document.createElement('div'); heart.innerHTML = '❤️'; heart.style.position = 'absolute';
+            heart.style.left = Math.random() * 100 + 'vw'; heart.style.top = '100vh'; heart.style.fontSize = (Math.random()*20+10)+'px';
+            heart.style.transition = '5s linear'; document.getElementById('heart-container').appendChild(heart);
+            setTimeout(() => { heart.style.transform = 'translateY(-110vh)'; heart.style.opacity = '0'; }, 100);
+            setTimeout(() => heart.remove(), 6000);
+        }
+        setInterval(createHeart, 400);
+    </script>
+</body>
+</html>
